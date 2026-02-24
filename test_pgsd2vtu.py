@@ -10,7 +10,7 @@ sys.path.append("./pgsd-3.2.0/build")
 sys.path.append("./pgsd-3.2.0/build/pgsd")
 import pgsd.hoomd
 import pgsd.fl
-import pgsd.pygsd
+import pgsd.pypgsd
 import numpy as np
 import os
 from pyevtk.hl import pointsToVTK as vtk
@@ -26,5 +26,5 @@ t = pgsd.hoomd.HOOMDTrajectory(f)
 count = 0
 for snapshot in t:
    count += 1
-   pirnt(count)
+   print(count)
    pname = sys.argv[1].replace('.gsd','')

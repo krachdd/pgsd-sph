@@ -1,275 +1,188 @@
-.. Copyright (c) 2016-2022 The Regents of the University of Michigan
-.. Part of GSD, released under the BSD 2-Clause License.
+.. Copyright (c) 2016-2023 The Regents of the University of Michigan
+.. Part of PGSD, released under the BSD 2-Clause License.
 
 Installation
 ============
 
-**gsd** binaries are available in the glotzerlab-software_ Docker_/Singularity_ images and in
-packages on conda-forge_ and PyPI_. You can also compile **gsd** from source, embed ``gsd.c`` in
-your code, or read gsd files with a pure Python reader ``pygsd.py``.
+**pgsd** must be compiled from source. It requires an MPI implementation and uses
+MPI-IO for all file operations. There are no pre-built binary packages.
 
-.. _glotzerlab-software: https://glotzerlab-software.readthedocs.io
-.. _Docker: https://hub.docker.com/
-.. _Singularity: https://www.sylabs.io/
-.. _conda-forge: https://conda-forge.org/
-.. _PyPI: https://pypi.org/
+Prerequisites
+-------------
 
-Binaries
---------
+**Required:**
 
-Conda package
-^^^^^^^^^^^^^
+* **MPI** — OpenMPI ≥ 4.0 or MPICH ≥ 3.4 (must include ``mpicc`` / ``mpicxx`` wrappers)
+* **CMake** ≥ 3.14
+* **Python** ≥ 3.8
+* **Cython** ≥ 0.29
+* **NumPy** ≥ 1.18
+* **mpi4py** ≥ 3.0
 
-**gsd** is available on conda-forge_ on the *linux-64*, *linux-aarch64*, *linux-ppc64le*, *osx-64*,
-*osx-arm64* and *win-64* platforms. To install, download and install miniforge_ or miniconda_ Then
-install **gsd** from the conda-forge_ channel:
+**Optional:**
 
-.. _miniforge: https://github.com/conda-forge/miniforge
-.. _miniconda: http://conda.pydata.org/miniconda.html
+* **pyevtk** — needed for the ``test_pgsd2vtu.py`` conversion script
 
-.. code-block:: bash
-
-   $ conda install -c conda-forge gsd
-
-Singularity / Docker images
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-See the glotzerlab-software_ documentation for instructions to install and use the containers.
-
-PyPI
-^^^^
-
-Use **pip** to install **gsd** binaries:
+Install prerequisites (Ubuntu / Debian)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
-   $ python3 -m pip install gsd
+   $ sudo apt install libopenmpi-dev openmpi-bin cmake python3-dev
+   $ pip install cython numpy mpi4py
+
+Install prerequisites via conda
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The recommended approach is to use the conda environment from the parent
+``hoomd-sph3`` project. To create a minimal standalone environment:
+
+.. code-block:: bash
+
+   $ conda create -n pgsd-env python=3.10 cython numpy mpi4py cmake \
+         -c conda-forge
+   $ conda activate pgsd-env
+   $ conda install -c conda-forge openmpi
 
 Compile from source
 -------------------
 
-To build the **gsd** Python package from source:
+1. Enter the source directory::
 
-1. `Install prerequisites`_::
+      $ cd pgsd-3.2.0
 
-   $ <package-manager> install cmake cython git numpy python pytest
+2. Configure with CMake, passing the MPI compiler wrappers explicitly::
 
-2. `Obtain the source`_::
+      $ mkdir build && cd build
+      $ CC=/usr/bin/mpicc CXX=/usr/bin/mpicxx cmake ..
 
-   $ git clone https://github.com/glotzerlab/gsd
+   .. tip::
 
-3. `Install with setuptools`_::
+      If ``mpicc`` / ``mpicxx`` are not in ``/usr/bin``, find them with
+      ``which mpicc`` and substitute the correct path.
 
-   $ python3 -m pip install -e gsd
+   .. tip::
 
-   **OR** `Build with CMake for development`_::
+      When using a conda environment, activate it first and pass the prefix::
 
-   $ cmake -B build/gsd -S gsd
-   $ cmake --build build/gsd
+         $ export CMAKE_PREFIX_PATH=$CONDA_PREFIX
+         $ CC=$CONDA_PREFIX/bin/mpicc CXX=$CONDA_PREFIX/bin/mpicxx cmake ..
 
-To run the tests (optional):
+3. Build::
 
-1. `Run tests`_::
+      $ make -j$(nproc)
 
-    $ pytest --pyargs gsd
+   The Cython extension ``pgsd/fl.so`` is built in the ``build/`` directory.
 
-To build the documentation from source (optional):
+4. Add the build directory to your Python path::
 
-1. `Install prerequisites`_::
+      $ export PYTHONPATH=/path/to/pgsd-3.2.0/build:$PYTHONPATH
 
-   $ <package-manager> install sphinx sphinx_rtd_theme ipython
+   Or add this line to your shell profile / conda activation script.
 
-2. `Build the documentation`_::
+5. Verify the installation::
 
-   $ sphinx-build -b html gsd/doc build/gsd-documentation
+      $ python3 -c "import pgsd.fl; print('pgsd.fl OK')"
+      $ python3 -c "import pgsd.hoomd; print('pgsd.hoomd OK')"
 
-The sections below provide details on each of these steps.
+CMake options
+-------------
 
-.. _Install prerequisites:
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
 
-Install prerequisites
-^^^^^^^^^^^^^^^^^^^^^
+   * - Option
+     - Default
+     - Description
+   * - ``CMAKE_C_COMPILER``
+     - system default
+     - Set to MPI C wrapper, e.g. ``mpicc``
+   * - ``CMAKE_CXX_COMPILER``
+     - system default
+     - Set to MPI C++ wrapper, e.g. ``mpicxx``
+   * - ``CMAKE_BUILD_TYPE``
+     - ``Release``
+     - Use ``Debug`` for development builds
+   * - ``CMAKE_C_FLAGS``
+     - (empty)
+     - Pass ``-march=native`` to optimise for your CPU
 
-**gsd** requires a number of tools and libraries to build.
+Incremental builds
+------------------
 
-.. note::
-
-    This documentation is generic. Replace ``<package-manager>`` with your package or module
-    manager. You may need to adjust package names and/or install additional packages, such as
-    ``-dev`` packages that provide headers needed to build **gsd**.
-
-.. tip::
-
-    Create or use an existing `virtual environment`_, one place where you can install dependencies
-    and **gsd**::
-
-        $ python3 -m venv gsd-venv
-
-    You will need to activate your environment before installing or configuring **gsd**::
-
-        $ source gsd-venv/bin/activate
-
-**General requirements:**
-
-* **C compiler** (tested with gcc 7-12, clang 6-14, visual studio 2019-2022)
-* **Python** >= 3.6
-* **numpy** >= 1.9.3
-* **Cython** >= 0.22
-
-**To build the documentation**:
-
-* **Sphinx**
-* **IPython**
-* an internet connection
-
-**To execute unit tests:**
-
-* **pytest** >= 3.9.0
-
-.. _virtual environment: https://docs.python.org/3/library/venv.html
-
-.. _Obtain the source:
-
-Obtain the source
-^^^^^^^^^^^^^^^^^
-
-Clone using Git_::
-
-   $ git clone https://github.com/glotzerlab/gsd
-
-Release tarballs are also available on the `GitHub release pages`_.
-
-.. seealso::
-
-    See the `git book`_ to learn how to work with `Git`_ repositories.
-
-.. _GitHub release pages: https://github.com/glotzerlab/gsd/releases/
-.. _git book: https://git-scm.com/book
-.. _Git: https://git-scm.com/
-
-.. _Install with setuptools:
-
-Install with setuptools
-^^^^^^^^^^^^^^^^^^^^^^^
-
-Use **pip** to install the Python module into your virtual environment:
+After modifying C or Cython source, re-run only the build step — CMake
+reconfigures automatically when needed:
 
 .. code-block:: bash
 
-   $ python3 -m pip install -e gsd
+   $ make -j$(nproc) -C build
 
-.. Build with CMake for development:
-
-Build with CMake for development
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-In addition to the setuptools build system. GSD also provides a `CMake`_ configuration for
-development and testing. You can assemble a functional Python module in the given build directory.
-First, configure the build with ``cmake``.
-
-.. code-block:: bash
-
-   $ cmake -B build/gsd -S gsd
-
-Then, build the code:
-
-.. code-block:: bash
-
-   $ cmake --build build/gsd
-
-When modifying code, you only need to repeat the build step to update your build - it will
-automatically reconfigure as needed.
-
-.. tip::
-
-    Use Ninja_ to perform incremental builds in less time::
-
-        $ cmake -B build/gsd -S gsd -GNinja
-
-.. tip::
-
-    Place your build directory in ``/tmp`` or ``/scratch`` for faster builds. CMake_ performs
-    out-of-source builds, so the build directory can be anywhere on the filesystem.
-
-.. tip::
-
-    Pass the following options to ``cmake`` to optimize the build for your processor:
-    ``-DCMAKE_CXX_FLAGS=-march=native -DCMAKE_C_FLAGS=-march=native``.
-
-.. important::
-
-    When using a virtual environment, activate the environment and set the cmake prefix path
-    before running CMake_: ``$ export CMAKE_PREFIX_PATH=<path-to-environment>``.
-
-.. _CMake: https://cmake.org/
-.. _Ninja: https://ninja-build.org/
-
-.. _Run tests:
-
-Run tests
-^^^^^^^^^
-
-Use `pytest`_ to execute unit tests:
-
-.. code-block:: bash
-
-   $ python3 -m pytest --pyargs gsd
-
-Add the ``--validate`` option to include longer-running validation tests:
-
-.. code-block:: bash
-
-   $ python3 -m pytest --pyargs gsd -p gsd.pytest_plugin_validate --validate
-
-.. tip::
-
-    When using CMake builds, change to the build directory before running ``pytest``::
-
-        $ cd build/gsd
-
-.. _pytest: https://docs.pytest.org/
-
-.. _Build the documentation:
-
-Build the documentation
-^^^^^^^^^^^^^^^^^^^^^^^
-
-Run `Sphinx`_ to build the documentation:
-
-.. code-block:: bash
-
-   $ sphinx-build -b html gsd/doc build/gsd-documentation
-
-Open the file :file:`build/gsd-documentation/index.html` in your web browser to view the
-documentation.
-
-.. tip::
-
-    When iteratively modifying the documentation, the sphinx options ``-a -n -W -T --keep-going``
-    are helpful to produce docs with consistent links in the side panel and to see more useful error
-    messages::
-
-        $ sphinx-build -a -n -W -T --keep-going -b html gsd/doc build/gsd-documentation
-
-.. tip::
-
-    When using CMake builds, set PYTHONPATH to the build directory before running ``sphinx-build``::
-
-        $ PYTHONPATH=build/gsd sphinx-build -b html gsd/doc build/gsd-documentation
-
-.. _Sphinx: https://www.sphinx-doc.org/
-
-Embedding GSD in your project
------------------------------
+Embedding PGSD in your project
+--------------------------------
 
 Using the C library
 ^^^^^^^^^^^^^^^^^^^
 
-**gsd** is implemented in a single C file. Copy ``gsd/gsd.h`` and ``gsd/gsd.c`` into your project.
+**pgsd** is implemented in two files. Copy ``pgsd/pgsd.h`` and ``pgsd/pgsd.c``
+into your project and link against your MPI library. No other dependencies are
+required for the C layer.
+
+.. code-block:: cmake
+
+   find_package(MPI REQUIRED)
+   add_library(pgsd pgsd.c)
+   target_link_libraries(pgsd PUBLIC MPI::MPI_C)
 
 Using the pure Python reader
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-If you only need to read files, you can skip installing and just extract the module modules
-``gsd/pygsd.py`` and ``gsd/hoomd.py``. Together, these implement a pure Python reader for **gsd**
-and **HOOMD** files - no C compiler required.
+For **read-only** access without compiling C code, copy these three files from
+the ``pgsd/`` directory:
+
+* ``pgsd/__init__.py``
+* ``pgsd/pypgsd.py``
+* ``pgsd/hoomd.py``
+
+These implement a pure Python reader for PGSD/HOOMD files. Use it as follows:
+
+.. code-block:: python
+
+   import pgsd.pypgsd
+   import pgsd.hoomd
+
+   with pgsd.pypgsd.PGSDFile(open('file.gsd', 'rb')) as f:
+       t = pgsd.hoomd.HOOMDTrajectory(f)
+       pos = t[0].particles.position
+
+.. note::
+
+   The pure Python reader is **read-only**. For write access, the compiled
+   ``pgsd.fl`` module is required.
+
+Troubleshooting
+---------------
+
+``ImportError: No module named 'pgsd.fl'``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The Cython extension was not found. Make sure ``PYTHONPATH`` includes the
+``build/`` directory that contains the compiled ``pgsd/fl.so``.
+
+``RuntimeError: Not a PGSD file``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The file was not written by PGSD, or is corrupted. Check that the magic number
+at offset 0 is ``0x65DF65DF65DF65DF``.
+
+MPI errors on open
+^^^^^^^^^^^^^^^^^^^
+
+Ensure that the number of MPI ranks used to **read** the file matches the
+number of ranks that **wrote** it, or use the pure Python reader for
+single-process access.
+
+``UnicodeDecodeError`` when opening a file
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The file was not opened in binary mode. Use ``open('file.gsd', 'rb')``.

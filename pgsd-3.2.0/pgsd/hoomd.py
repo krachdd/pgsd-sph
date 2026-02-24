@@ -13,8 +13,8 @@
     * `ParticleData` - Store particle data in a frame.
     * `BondData` - Store topology data in a frame.
 
-* `open` - Open a hoomd schema GSD file.
-* `read_log` - Read log from a hoomd schema GSD file into a dict of time-series
+* `open` - Open a hoomd schema PGSD file.
+* `read_log` - Read log from a hoomd schema PGSD file into a dict of time-series
   arrays.
 
 See Also:
@@ -529,7 +529,6 @@ class HOOMDTrajectory(object):
         self._initial_frame = None
 
         logger.info('opening HOOMDTrajectory: ' + str(self.file))
-        print('opening HOOMDTrajectory: ' + str(self.file))
 
         if self.file.schema != 'hoomd':
             raise RuntimeError('PGSD file is not a hoomd schema file: '
@@ -543,7 +542,6 @@ class HOOMDTrajectory(object):
                                + str(version) + ' in: ' + str(self.file))
 
         logger.info('found ' + str(len(self)) + ' frames')
-        print('found ' + str(len(self)) + ' frames')
 
     @property
     def file(self):
@@ -567,7 +565,7 @@ class HOOMDTrajectory(object):
         frame. If it is the same, do not write it out as it can be instantiated
         either from the value at the initial frame or the default value.
         """
-        raise NotImplementedError('Python Interface only implemented for single core reading of gsd files.')
+        raise NotImplementedError('Python Interface only implemented for single core reading of pgsd files.')
         # logger.debug('Appending frame to hoomd trajectory: '
         #              + str(self.file))
 
@@ -631,7 +629,7 @@ class HOOMDTrajectory(object):
         #                 b = numpy.array(data, dtype=numpy.dtype((bytes, wid)))
         #                 data = b.view(dtype=numpy.int8).reshape(len(b), wid)
         #             MPI.COMM_WORLD.Barrier()
-        #             self.file.write_chunk(path + '/' + name, offset, rank, write_all, data)
+        #             self.file.write_chunk(path + '/' + name, data, offset, rank, write_all)
 
         # # # write state data
         # # for state, data in frame.state.items():
@@ -665,7 +663,7 @@ class HOOMDTrajectory(object):
             False if the data matches that in the initial frame. False
             if the data matches all default values. True otherwise.
         """
-        raise NotImplementedError('Python Interface only implemented for single core reading of gsd files.')
+        raise NotImplementedError('Python Interface only implemented for single core reading of pgsd files.')
         # container = getattr(frame, path)
         # data = getattr(container, name)
 
@@ -739,12 +737,11 @@ class HOOMDTrajectory(object):
         if self.file.chunk_exists(frame=idx, name='configuration/step', write_all=False):
             # c_offset = numpy.asarray([0], dtype = numpy.uint32)
             c_offset = numpy.uint32(0)
-            print(f'c_offset {c_offset}') 
             step_arr = self.file.read_chunk(frame=idx,
-                                            name='configuration/step', 
-                                            offset = c_offset, 
+                                            name='configuration/step',
+                                            offset = c_offset,
                                             r_all = False)
-            print(f'step_arr[0] {step_arr[0]}')
+            logger.debug(f'step_arr[0] {step_arr[0]}')
             snap.configuration.step = step_arr[0]
         else:
             if self._initial_frame is not None:
@@ -756,11 +753,11 @@ class HOOMDTrajectory(object):
         if self.file.chunk_exists(frame=idx, name='configuration/dimensions', write_all=False):
             # c_offset = numpy.asarray([0], dtype = numpy.uint32)
             c_offset = numpy.uint32(0)
-            dimensions_arr = self.file.read_chunk(frame=idx, 
+            dimensions_arr = self.file.read_chunk(frame=idx,
                                                   name='configuration/dimensions',
                                                   offset = c_offset,
                                                   r_all = False)
-            print(f'dimensionsarray {dimensions_arr}')
+            logger.debug(f'dimensions array {dimensions_arr}')
             snap.configuration.dimensions = dimensions_arr[0]
         else:
             if self._initial_frame is not None:
@@ -773,12 +770,11 @@ class HOOMDTrajectory(object):
         if self.file.chunk_exists(frame=idx, name='configuration/box', write_all=False):
             # c_offset = numpy.asarray([0], dtype = numpy.uint32)
             c_offset = numpy.uint32(0)
-            snap.configuration.box = self.file.read_chunk(frame=idx, 
+            snap.configuration.box = self.file.read_chunk(frame=idx,
                                                           name='configuration/box',
                                                           offset = c_offset,
                                                           r_all = False)
-            print('Box dimensions read')
-            #print(f'box : {snap.configuration.box}')
+            logger.debug('Box dimensions read')
         else:
             if self._initial_frame is not None:
                 snap.configuration.box = self._initial_frame.configuration.box
@@ -799,11 +795,11 @@ class HOOMDTrajectory(object):
             if self.file.chunk_exists(frame=idx, name=path + '/N', write_all=False):
                 # c_offset = numpy.asarray([0], dtype = numpy.uint32)
                 c_offset = numpy.uint32(0)
-                N_arr = self.file.read_chunk(frame=idx, 
+                N_arr = self.file.read_chunk(frame=idx,
                                              name=path + '/N',
-                                             offset = c_offset, 
+                                             offset = c_offset,
                                              r_all = False)
-                print(f'N: {N_arr[0]}')
+                logger.debug(f'N: {N_arr[0]}')
                 container.N = N_arr[0]
             else:
                 if self._initial_frame is not None:
@@ -814,14 +810,14 @@ class HOOMDTrajectory(object):
                 if self.file.chunk_exists(frame=idx, name=path + '/types', write_all=False):
                     # c_offset = numpy.asarray([0], dtype = numpy.uint32)
                     c_offset = numpy.uint32(0)
-                    tmp = self.file.read_chunk(frame=idx, 
+                    tmp = self.file.read_chunk(frame=idx,
                                                name=path + '/types',
                                                offset = c_offset,
                                                r_all = False)
                     tmp = tmp.view(dtype=numpy.dtype((bytes, tmp.shape[1])))
                     tmp = tmp.reshape([tmp.shape[0]])
                     container.types = list(a.decode('UTF-8') for a in tmp)
-                    print(f'container.types: {container.types}')
+                    logger.debug(f'container.types: {container.types}')
                 else:
                     if self._initial_frame is not None:
                         container.types = initial_frame_container.types
@@ -844,7 +840,7 @@ class HOOMDTrajectory(object):
                     container.type_shapes = \
                         list(json.loads(json_string.decode('UTF-8'))
                              for json_string in tmp)
-                    print(f'container.type_shapes: {container.type_shapes}')
+                    logger.debug(f'container.type_shapes: {container.type_shapes}')
                 else:
                     if self._initial_frame is not None:
                         container.type_shapes = \
@@ -861,13 +857,11 @@ class HOOMDTrajectory(object):
                 if self.file.chunk_exists(frame=idx, name=path + '/' + name, write_all=False):
                     # c_offset = numpy.asarray([0], dtype = numpy.uint32)
                     c_offset = numpy.uint32(0)
-                    container.__dict__[name] = self.file.read_chunk(frame=idx, 
+                    container.__dict__[name] = self.file.read_chunk(frame=idx,
                                                                     name=path + '/' + name,
                                                                     offset = c_offset,
                                                                     r_all = False)
-                    print(f'Name: {name} size {container.__dict__[name].shape}')
-                    # DK for tests save all fields to txt files
-                    # numpy.savetxt(f'{name}.txt', container.__dict__[name])
+                    logger.debug(f'Name: {name} size {container.__dict__[name].shape}')
                 else:
                     if (self._initial_frame is not None
                             and initial_frame_container.N == container.N):
@@ -972,7 +966,7 @@ def open(name, mode='r'):
     |                  | Creates the file if needed, or overwrites   |
     |                  | an existing file.                           |
     +------------------+---------------------------------------------+
-    | ``'x'``          | Create a gsd file exclusively and opens it  |
+    | ``'x'``          | Create a pgsd file exclusively and opens it |
     |                  | for reading and writing.                    |
     |                  | Raise :py:exc:`FileExistsError`             |
     |                  | if it already exists.                       |
@@ -1035,7 +1029,7 @@ def read_log(name, scalar_only=False):
 
     with fl.open(name=str(name),
                  mode='r',
-                 application='pgsd.hoomd ' + pgsd.version.version,
+                 application='pgsd.hoomd ' + pgsd.version,
                  schema='hoomd',
                  schema_version=[1, 4]) as pgsdfileobj:
 
@@ -1056,13 +1050,13 @@ def read_log(name, scalar_only=False):
                     # handle default configuration step on frame 0
                     tmp = numpy.array([0], dtype=numpy.uint64)
                 else:
-                    tmp = gpsdfileobj.read_chunk(frame=0, name=log)
+                    tmp = pgsdfileobj.read_chunk(frame=0, name=log)
 
                 if scalar_only and not tmp.shape[0] == 1:
                     continue
                 if tmp.shape[0] == 1:
                     logged_data_dict[log] = numpy.full(
-                        fill_value=tmp[0], shape=(gsdfileobj.nframes,))
+                        fill_value=tmp[0], shape=(pgsdfileobj.nframes,))
                 else:
                     logged_data_dict[log] = numpy.tile(
                         tmp,

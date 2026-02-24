@@ -379,7 +379,7 @@ cdef class PGSDFile:
 
         self.__is_open = True
 
-    def close(self, write_all):
+    def close(self, write_all=True):
         """close()
 
         Close the file.
@@ -457,7 +457,7 @@ cdef class PGSDFile:
 
     #     __raise_on_error(retval, self.name)
 
-    def end_frame(self, write_all):
+    def end_frame(self, write_all=True):
         """end_frame()
 
         Complete writing the current frame. After calling :py:meth:`end_frame()`
@@ -505,7 +505,7 @@ cdef class PGSDFile:
 
         __raise_on_error(retval, self.name)
 
-    def flush(self, write_all):
+    def flush(self, write_all=True):
         """flush()
 
         Flush all buffered frames to the file.
@@ -523,7 +523,7 @@ cdef class PGSDFile:
 
         __raise_on_error(retval, self.name)
 
-    def write_chunk(self, name, offset, rank, write_all, data):
+    def write_chunk(self, name, data, offset=None, rank=0, write_all=True):
         """write_chunk(name, data)
 
         Write a data chunk to the file. After writing all chunks in the
@@ -714,7 +714,7 @@ cdef class PGSDFile:
 
         return index_entry != NULL
 
-    def read_chunk(self, frame, name, N, M, uint32_t offset, r_all):
+    def read_chunk(self, frame, name, N=0, M=0, uint32_t offset=0, r_all=False):
         """read_chunk(frame, name)
 
         Read a data chunk from the file and return it as a numpy array.
@@ -772,7 +772,6 @@ cdef class PGSDFile:
         cdef const libpgsd.pgsd_index_entry* index_entry
         cdef char * c_name
         name_e = name.encode('utf-8')
-        print("in file fl.pyx name: " +str(name_e))
         c_name = name_e
         cdef int64_t c_frame
         c_frame = frame
@@ -794,7 +793,6 @@ cdef class PGSDFile:
 
         cdef libpgsd.pgsd_type pgsd_type
         pgsd_type = <libpgsd.pgsd_type>index_entry.type
-        print("in file fl.pyx pgsd_type: " +str(pgsd_type))
 
 
         cdef void *data_ptr

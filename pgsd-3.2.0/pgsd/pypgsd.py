@@ -3,11 +3,10 @@
 
 """PGSD reader written in pure Python.
 
-:file:`pypgsd.py` is a pure Python implementation of a GSD reader. If your
-analysis tool is written in Python and you want to embed a GSD reader without
-requiring C code compilation or require the **gsd** Python package as a
-dependency, then use the following Python files from the :file:`gsd/` directory
-to make a pure Python reader. It is not as high performance as the C reader.
+:file:`pypgsd.py` is a pure Python, read-only implementation of a PGSD file
+reader. If your analysis tool is written in Python and you want to embed a PGSD
+reader without requiring C code compilation or the **pgsd** compiled extension,
+copy the following files from the :file:`pgsd/` directory:
 
 * :file:`pgsd/`
 
@@ -15,15 +14,15 @@ to make a pure Python reader. It is not as high performance as the C reader.
     * :file:`pypgsd.py`
     * :file:`hoomd.py`
 
+The reader accepts any file-like Python object, which is useful for reading
+from in-memory buffers. For regular filesystem access and for **writing** PGSD
+files, use the compiled :py:mod:`pgsd.fl` module instead.
 
-The reader reads from file-like Python objects, which may be useful for reading
-from in memory buffers, and in-database grid files, For regular files on the
-filesystem, and for writing pgsd files, use :py:mod:`pgsd.fl`.
+The :py:class:`PGSDFile` in this module is interchangeable with
+:py:class:`pgsd.fl.PGSDFile` for read operations and works with
+:py:class:`pgsd.hoomd.HOOMDTrajectory`:
 
-The :py:class:`PGSDFile` in this module can be used with the
-:py:class:`pgsd.hoomd.HOOMDTrajectory` hoomd reader:
-
->>> with pgsd.pypgsd.PGSDFile('test.gsd', 'r') as f:
+>>> with pgsd.pypgsd.PGSDFile(open('simulation.gsd', 'rb')) as f:
 ...     t = pgsd.hoomd.HOOMDTrajectory(f)
 ...     pos = t[0].particles.position
 
@@ -106,7 +105,6 @@ class PGSDFile(object):
         self.__file = file
 
         logger.info('opening file: ' + str(file))
-        print('opening file: ' + str(file))
 
         # read the header
         self.__file.seek(0)
@@ -147,8 +145,8 @@ class PGSDFile(object):
 
         for name in names:
             sname = name.decode('utf-8')
-            print(f'Init PGSDFile: sname{sname}')
             if len(sname) != 0:
+                logger.debug('Init PGSDFile: sname ' + sname)
                 self.__namelist[sname] = c
                 c = c + 1
 
@@ -207,7 +205,6 @@ class PGSDFile(object):
         """
         if self.__is_open:
             logger.info('closing file: ' + str(self.__file))
-            print('closing file: ' + str(self.__file))
             self.__handle = None
             self.__index = None
             self.__namelist = None
@@ -258,7 +255,7 @@ class PGSDFile(object):
         # if we got here, we didn't find the specified chunk
         return None
 
-    def chunk_exists(self, frame, name):
+    def chunk_exists(self, frame, name, write_all=False):
         """Test if a chunk exists.
 
         Args:
@@ -284,12 +281,14 @@ class PGSDFile(object):
         chunk = self._find_chunk(frame, name)
         return chunk is not None
 
-    def read_chunk(self, frame, name):
+    def read_chunk(self, frame, name, offset=0, r_all=False):
         """Read a data chunk from the file and return it as a numpy array.
 
         Args:
             frame (int): Index of the frame to read
             name (str): Name of the chunk
+            offset (int): Ignored in pure Python reader (always reads full chunk)
+            r_all (bool): Ignored in pure Python reader (always reads full chunk)
 
         Returns:
             `numpy.ndarray`: Data read from file.
@@ -297,23 +296,15 @@ class PGSDFile(object):
         Examples:
             Read a 1D array::
 
-                with PGSDFile(name=filename, mode='r') as f:
+                with PGSDFile(open(filename, 'rb')) as f:
                     data = f.read_chunk(frame=0, name='chunk1d')
                     # data.shape == [N]
 
             Read a 2D array::
 
-                with PGSDFile(name=filename, mode='r') as f:
+                with PGSDFile(open(filename, 'rb')) as f:
                     data = f.read_chunk(frame=0, name='chunk2d')
                     # data.shape == [N,M]
-
-            Read multiple frames::
-
-                with PGSDFile(name=filename, mode='r') as f:
-                    data0 = f.read_chunk(frame=0, name='chunk')
-                    data1 = f.read_chunk(frame=1, name='chunk')
-                    data2 = f.read_chunk(frame=2, name='chunk')
-                    data3 = f.read_chunk(frame=3, name='chunk')
 
         .. tip::
             Each call invokes a disk read and allocation of a
@@ -321,43 +312,41 @@ class PGSDFile(object):
             :py:meth:`read_chunk()` on the same chunk repeatedly. Cache the
             arrays instead.
         """
-        raise NotImplementedError;
+        if not self.__is_open:
+            raise ValueError("File is not open")
 
-        # if not self.__is_open:
-        #     raise ValueError("File is not open")
+        chunk = self._find_chunk(frame, name)
 
-        # chunk = self._find_chunk(frame, name)
+        if chunk is None:
+            raise KeyError("frame " + str(frame) + " / chunk " + name
+                           + " not found in: " + str(self.__file))
 
-        # if chunk is None:
-        #     raise KeyError("frame " + str(frame) + " / chunk " + name
-        #                    + " not found in: " + str(self.__file))
+        logger.debug('read chunk: ' + str(self.__file) + ' - ' + str(frame)
+                     + ' - ' + name)
 
-        # logger.debug('read chunk: ' + str(self.__file) + ' - ' + str(frame)
-        #              + ' - ' + name)
+        size = chunk.N * chunk.M * pgsd_type_mapping[chunk.type].itemsize
+        if chunk.location == 0:
+            raise RuntimeError("Corrupt chunk: " + str(frame) + " / " + name
+                               + " in file" + str(self.__file))
 
-        # size = chunk.N * chunk.M * pgsd_type_mapping[chunk.type].itemsize
-        # if chunk.location == 0:
-        #     raise RuntimeError("Corrupt chunk: " + str(frame) + " / " + name
-        #                        + " in file" + str(self.__file))
+        if size == 0:
+            return numpy.array([], dtype=pgsd_type_mapping[chunk.type])
 
-        # if (size == 0):
-        #     return numpy.array([], dtype=pgsd_type_mapping[chunk.type])
+        self.__file.seek(chunk.location, 0)
+        data_raw = self.__file.read(size)
 
-        # self.__file.seek(chunk.location, 0)
-        # data_raw = self.__file.read(size)
+        if len(data_raw) != size:
+            raise IOError
 
-        # if len(data_raw) != size:
-        #     raise IOError
+        data_npy = numpy.frombuffer(data_raw,
+                                    dtype=pgsd_type_mapping[chunk.type])
 
-        # data_npy = numpy.frombuffer(data_raw,
-        #                             dtype=pgsd_type_mapping[chunk.type])
+        if chunk.M == 1:
+            return data_npy
+        else:
+            return data_npy.reshape([chunk.N, chunk.M])
 
-        # if chunk.M == 1:
-        #     return data_npy
-        # else:
-        #     return data_npy.reshape([chunk.N, chunk.M])
-
-    def find_matching_chunk_names(self, match):
+    def find_matching_chunk_names(self, match, write_all=False):
         """Find chunk names in the file that start with the string *match*.
 
         Args:

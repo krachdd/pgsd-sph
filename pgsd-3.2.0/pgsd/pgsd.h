@@ -46,7 +46,7 @@ extern "C"
         /// Unsigned 32-bit integer.
         PGSD_TYPE_UINT32,
 
-        /// Unsigned 53-bit integer.
+        /// Unsigned 64-bit integer.
         PGSD_TYPE_UINT64,
 
         /// Signed 8-bit integer.
@@ -728,12 +728,11 @@ extern "C"
 
     void pgsd_bcast_index_entry(struct pgsd_index_entry* e);
 
-    inline const bool is_root()    
+    static inline bool is_root()
     {
         int rank;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-        if (rank == 0){ return true; }
-        else { return false; }
+        return (rank == 0);
     }
 
 #ifdef __cplusplus
