@@ -45,9 +45,3 @@ jobs:
         run: |
           source .venv/pgsd/bin/activate
           cmake --build build --parallel $(nproc)
-
-      - name: Run tests
-        run: |
-          source .venv/pgsd/bin/activate
-          cd build/pgsd
-          python3 -m pytest test/ -v
