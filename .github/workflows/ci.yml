@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "**-release-**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-and-test:
+    name: Build & test (ubuntu-latest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y \
+            cmake \
+            libopenmpi-dev \
+            openmpi-bin \
+            python3-dev \
+            python3-pip \
+            python3-venv
+
+      - name: Set up Python virtual environment
+        run: |
+          python3 -m venv .venv/pgsd
+          .venv/pgsd/bin/pip install --upgrade pip
+          .venv/pgsd/bin/pip install -r requirements.txt pytest
+
+      - name: Configure (CMake)
+        run: |
+          source .venv/pgsd/bin/activate
+          cmake -S pgsd -B build \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: |
+          source .venv/pgsd/bin/activate
+          cmake --build build --parallel $(nproc)
+
+      - name: Run tests
+        run: |
+          source .venv/pgsd/bin/activate
+          cd build/pgsd
+          python3 -m pytest test/ -v
