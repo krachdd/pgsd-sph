@@ -1,5 +1,8 @@
 # PGSD — Parallelized General Simulation Data
 
+[![CI](https://github.com/krachdd/pgsd-sph/actions/workflows/ci.yml/badge.svg)](https://github.com/krachdd/pgsd-sph/actions/workflows/ci.yml)
+[![Release V1.0](https://img.shields.io/badge/release-V1.0-blue)](https://github.com/krachdd/pgsd-sph/releases/tag/v1.0)
+
 **PGSD** is an MPI-parallel file I/O library for SPH (Smoothed Particle Hydrodynamics)
 simulation output. It is a fork of the
 [GSD library](https://github.com/glotzerlab/gsd) from the Glotzer Group, adapted to
