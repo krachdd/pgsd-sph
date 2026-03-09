@@ -36,7 +36,9 @@ jobs:
         run: |
           source .venv/pgsd/bin/activate
           cmake -S pgsd -B build \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER=mpicc \
+            -DCMAKE_CXX_COMPILER=mpicxx
 
       - name: Build
         run: |
