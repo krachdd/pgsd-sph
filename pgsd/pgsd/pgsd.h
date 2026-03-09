@@ -344,6 +344,12 @@ extern "C"
 
         /// Number of index entries to buffer before flushing.
         uint64_t index_entries_to_buffer;
+
+        /// MPI rank of this process in MPI_COMM_WORLD.
+        int rank;
+
+        /// Number of MPI processes in MPI_COMM_WORLD.
+        int nprocs;
         };
 
     /** Specify a version.

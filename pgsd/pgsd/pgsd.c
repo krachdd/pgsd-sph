@@ -105,82 +105,69 @@ enum
 
 void bcast_file_size(struct pgsd_handle* handle)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(&handle->file_size, 1, MPI_LONG_LONG_INT, 0, MPI_COMM_WORLD);
     }
 
 void bcast_frame_index_size(struct pgsd_handle* handle)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(&handle->frame_index.size, 1, my_MPI_SIZE_T, 0, MPI_COMM_WORLD);
     }
 
 void bcast_index_allocated_entries(struct pgsd_handle* handle)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(&handle->header.index_allocated_entries, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
     }
 
 void bcast_index_location(struct pgsd_handle* handle)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(&handle->header.index_location, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
     }
 
 void bcast_namelist_allocated_entries(struct pgsd_handle* handle)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(&handle->header.namelist_allocated_entries, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
     }
 
 void bcast_namelist_location(struct pgsd_handle* handle)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(&handle->header.namelist_location, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD);
     }
 
 void bcast_number_of_names_file(struct pgsd_handle* handle)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(&handle->file_names.n_names, 1, my_MPI_SIZE_T, 0, MPI_COMM_WORLD);
     }
 
 void bcast_number_of_names_frame(struct pgsd_handle* handle)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(&handle->frame_names.n_names, 1, my_MPI_SIZE_T, 0, MPI_COMM_WORLD);
     }
 
 void bcast_retval(int* retval)
     {
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Bcast(retval, 1, MPI_INT, 0, MPI_COMM_WORLD);
     }
 
 // Check before use
 void pgsd_bcast_index_entry(struct pgsd_index_entry* e)
     {
-    int rank;
     const int f = 5;
-    const int blocklegth[] = { 2, 1, 1, 1, 2 };
-    MPI_Barrier(MPI_COMM_WORLD);
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    const int blocklength[] = { 2, 1, 1, 1, 2 };
     MPI_Datatype entry;
     MPI_Datatype types[] = { MPI_UINT64_T,
                              MPI_INT64_T,
                              MPI_UINT32_T,
                              MPI_UINT16_T,
-                             MPI_UINT8_T};
+                             MPI_UINT8_T };
     MPI_Aint offsets[5];
     offsets[0] = offsetof(struct pgsd_index_entry, frame);
     offsets[1] = offsetof(struct pgsd_index_entry, location);
     offsets[2] = offsetof(struct pgsd_index_entry, M);
     offsets[3] = offsetof(struct pgsd_index_entry, id);
     offsets[4] = offsetof(struct pgsd_index_entry, type);
-    MPI_Type_create_struct(f, blocklegth, offsets, types, &entry);
+    MPI_Type_create_struct(f, blocklength, offsets, types, &entry);
     MPI_Type_commit(&entry);
     MPI_Bcast(e, 1, entry, 0, MPI_COMM_WORLD);
-    MPI_Barrier(MPI_COMM_WORLD);
     MPI_Type_free(&entry);
     }
 
@@ -661,8 +648,13 @@ inline static int pgsd_index_buffer_map(struct pgsd_index_buffer* buf, struct pg
         {
         return retval;
         }
-    MPI_File_seek(handle->fh, handle->header.index_location, MPI_SEEK_SET);
-    MPI_File_read_at(handle->fh, handle->header.index_location, buf->data, sizeof(struct pgsd_index_entry)* handle->header.index_allocated_entries, MPI_BYTE, MPI_STATUS_IGNORE);
+    int io_ret = MPI_File_read_at(handle->fh, handle->header.index_location, buf->data,
+                                  sizeof(struct pgsd_index_entry) * handle->header.index_allocated_entries,
+                                  MPI_BYTE, MPI_STATUS_IGNORE);
+    if (io_ret != MPI_SUCCESS)
+        {
+        return PGSD_ERROR_IO;
+        }
 
 #endif
 
@@ -972,11 +964,10 @@ inline static int pgsd_index_buffer_sort(struct pgsd_index_buffer* buf)
 */
 inline static int pgsd_expand_file_index(struct pgsd_handle* handle, size_t size_required)
     {
+    const int rank = handle->rank;
 #if PGSD_ACTIVATE_LOGGER
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     printf("[INFO]: Rank: %i -> PGSD: pgsd_expand_file_index\n", rank);
-#endif    
+#endif
     if (handle->open_flags == PGSD_OPEN_READONLY)
         {
         return PGSD_ERROR_FILE_MUST_BE_WRITABLE;
@@ -1037,7 +1028,7 @@ inline static int pgsd_expand_file_index(struct pgsd_handle* handle, size_t size
 
         MPI_File_read_at(handle->fh, old_index_location + total_bytes_written, buf, bytes_to_copy, MPI_BYTE, MPI_STATUS_IGNORE);
 
-        if( is_root() ){
+        if (rank == 0) {
             MPI_File_write_at(handle->fh, new_index_location + total_bytes_written, buf, bytes_to_copy, MPI_BYTE, MPI_STATUS_IGNORE);
 #if PGSD_ACTIVATE_LOGGER
             printf("[INFO]: Rank: %i -> PGSD: write at 1: loc %lli, size %li\n", rank, new_index_location + total_bytes_written, bytes_to_copy);
@@ -1060,7 +1051,7 @@ inline static int pgsd_expand_file_index(struct pgsd_handle* handle, size_t size
             bytes_to_copy = new_index_bytes - total_bytes_written;
             }
 
-        if( is_root() ){
+        if (rank == 0) {
             MPI_File_write_at(handle->fh, new_index_location + total_bytes_written, buf, bytes_to_copy, MPI_BYTE, MPI_STATUS_IGNORE);
 #if PGSD_ACTIVATE_LOGGER
             printf("[INFO]: Rank: %i -> PGSD: write at 2: loc %lli, size %li\n", rank, new_index_location + total_bytes_written, bytes_to_copy);
@@ -1079,7 +1070,7 @@ inline static int pgsd_expand_file_index(struct pgsd_handle* handle, size_t size
     handle->header.index_allocated_entries = size_new;
 
     // write the new header out
-    if( is_root() ){
+    if (rank == 0) {
         MPI_File_write_at(handle->fh, 0, &(handle->header), sizeof(struct pgsd_header), MPI_BYTE, MPI_STATUS_IGNORE);
 #if PGSD_ACTIVATE_LOGGER
         printf("[INFO]: Rank: %i -> PGSD: write at 3: loc 0, size %li\n", rank, sizeof(struct pgsd_header));
@@ -1087,7 +1078,7 @@ inline static int pgsd_expand_file_index(struct pgsd_handle* handle, size_t size
     }
 
     // remap the file index
-    if ( is_root() )
+    if (rank == 0)
         {
         retval = pgsd_index_buffer_map(&handle->file_index, handle);
         if (retval != 0)
@@ -1121,28 +1112,33 @@ inline static int pgsd_flush_write_buffer(struct pgsd_handle* handle)
         return PGSD_ERROR_INVALID_ARGUMENT;
         }
 
-    int rank, nprocs;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+    const int rank = handle->rank;
+    const int nprocs = handle->nprocs;
 #if PGSD_ACTIVATE_LOGGER
     printf("[INFO]: Rank: %i -> PGSD: pgsd_flush_write_buffer\n", rank);
 #endif
 
-    size_t allbuffers[nprocs];
+    size_t* allbuffers = malloc(nprocs * sizeof(size_t));
+    if (allbuffers == NULL)
+        {
+        return PGSD_ERROR_MEMORY_ALLOCATION_FAILED;
+        }
     MPI_Allgather(&handle->write_buffer.size, 1, my_MPI_SIZE_T, allbuffers, 1, my_MPI_SIZE_T, MPI_COMM_WORLD);
 
     if (handle->write_buffer.size == 0 && handle->buffer_index.size == 0)
         {
         // nothing to do
+        free(allbuffers);
         return PGSD_SUCCESS;
         }
 
-    if (is_root() && handle->write_buffer.size > 0 && handle->buffer_index.size == 0)
+    if ((rank == 0) && handle->write_buffer.size > 0 && handle->buffer_index.size == 0)
         {
         // error: bytes in buffer, but no index for them
 #if PGSD_ACTIVATE_LOGGER
         printf("Rank %i: ERRORHANDLER: pgsd_flush_write_buffer -> Invalid argument!\n", rank);
 #endif
+        free(allbuffers);
         return PGSD_ERROR_INVALID_ARGUMENT;
         }
     bcast_file_size(handle);
@@ -1164,8 +1160,8 @@ inline static int pgsd_flush_write_buffer(struct pgsd_handle* handle)
     MPI_Barrier(MPI_COMM_WORLD);
     size_t global_write_buffer_size;
     MPI_Allreduce(&handle->write_buffer.size, &global_write_buffer_size, 1, my_MPI_SIZE_T, MPI_SUM, MPI_COMM_WORLD);
-    
-    if ( is_root() )
+
+    if (rank == 0)
         {
         handle->file_size += global_write_buffer_size;
         }
@@ -1176,7 +1172,7 @@ inline static int pgsd_flush_write_buffer(struct pgsd_handle* handle)
 
     // reset write_buffer for new data
     // Move buffer_index entries to frame_index.
-    if ( is_root() )
+    if (rank == 0)
         {
         size_t i;
         for (i = 0; i < handle->buffer_index.size; i++)
@@ -1188,6 +1184,7 @@ inline static int pgsd_flush_write_buffer(struct pgsd_handle* handle)
 #if PGSD_ACTIVATE_LOGGER
                 printf("Rank %i: ERRORHANDLER: pgsd_flush_write_buffer -> pgsd_index_buffer_add!\n", rank);
 #endif
+                free(allbuffers);
                 return retval;
                 }
 
@@ -1199,6 +1196,7 @@ inline static int pgsd_flush_write_buffer(struct pgsd_handle* handle)
     // clear the buffer index for new entries
     handle->buffer_index.size = 0;
 
+    free(allbuffers);
     return PGSD_SUCCESS;
     }
 
@@ -1217,9 +1215,7 @@ inline static int pgsd_flush_write_buffer(struct pgsd_handle* handle)
 */
 inline static int pgsd_flush_name_buffer(struct pgsd_handle* handle)
     {
-    int rank, nprocs;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+    const int rank = handle->rank;
 #if PGSD_ACTIVATE_LOGGER
     printf("[INFO]: Rank: %i -> PGSD: pgsd_flush_name_buffer\n", rank);
 #endif
@@ -1238,8 +1234,8 @@ inline static int pgsd_flush_name_buffer(struct pgsd_handle* handle)
         return PGSD_SUCCESS;
         }
 
-    if( is_root() )
-        { 
+    if (rank == 0)
+        {
         if (handle->frame_names.data.size == 0)
             {
             // error: bytes in buffer, but no names for them
@@ -1252,7 +1248,7 @@ inline static int pgsd_flush_name_buffer(struct pgsd_handle* handle)
     size_t old_reserved = handle->file_names.data.reserved;
     size_t old_size = handle->file_names.data.size;
 
-    if ( is_root() )
+    if (rank == 0)
         {
         // add the new names to the file name list and zero the frame list
         retval = pgsd_byte_buffer_append(&handle->file_names.data,
@@ -1274,7 +1270,7 @@ inline static int pgsd_flush_name_buffer(struct pgsd_handle* handle)
 
     pgsd_util_zero_memory(handle->frame_names.data.data, handle->frame_names.data.reserved);
 
-    if ( is_root() )
+    if (rank == 0)
         {
         // reserved space must be a multiple of the PGSD name size
         if (handle->file_names.data.reserved % PGSD_NAME_SIZE != 0)
@@ -1290,12 +1286,10 @@ inline static int pgsd_flush_name_buffer(struct pgsd_handle* handle)
             // write the new name list to the end of the file
             long long unsigned int offset = handle->file_size;
 
-            if ( is_root() ){
-                MPI_File_write_at(handle->fh, offset, handle->file_names.data.data, handle->file_names.data.reserved, MPI_BYTE, MPI_STATUS_IGNORE);
+            MPI_File_write_at(handle->fh, offset, handle->file_names.data.data, handle->file_names.data.reserved, MPI_BYTE, MPI_STATUS_IGNORE);
 #if PGSD_ACTIVATE_LOGGER
-                printf("[INFO]: Rank: %i -> PGSD: write at 5: loc %lli, size %li\n", rank, offset, handle->file_names.data.reserved);
+            printf("[INFO]: Rank: %i -> PGSD: write at 5: loc %lli, size %li\n", rank, offset, handle->file_names.data.reserved);
 #endif
-            }
 
             handle->file_size += handle->file_names.data.reserved;
             handle->header.namelist_location = offset;
@@ -1303,21 +1297,16 @@ inline static int pgsd_flush_name_buffer(struct pgsd_handle* handle)
                 = handle->file_names.data.reserved / PGSD_NAME_SIZE;
 
             // write the new header out
-            if( is_root() ){
-                MPI_File_write_at(handle->fh, 0, &(handle->header), sizeof(struct pgsd_header), MPI_BYTE, MPI_STATUS_IGNORE);
-            }
+            MPI_File_write_at(handle->fh, 0, &(handle->header), sizeof(struct pgsd_header), MPI_BYTE, MPI_STATUS_IGNORE);
             }
         else
             {
             // write the new name list to the old index location
             long long unsigned int offset = handle->header.namelist_location;
-            if( is_root() )
-                {
-                MPI_File_write_at(handle->fh, offset + old_size, handle->file_names.data.data + old_size, handle->file_names.data.reserved - old_size, MPI_BYTE, MPI_STATUS_IGNORE);
+            MPI_File_write_at(handle->fh, offset + old_size, handle->file_names.data.data + old_size, handle->file_names.data.reserved - old_size, MPI_BYTE, MPI_STATUS_IGNORE);
 #if PGSD_ACTIVATE_LOGGER
-                printf("[INFO]: Rank: %i -> PGSD: write at 6: loc %lli, size %li\n", rank, offset+old_size, handle->file_names.data.reserved - old_size);
+            printf("[INFO]: Rank: %i -> PGSD: write at 6: loc %lli, size %li\n", rank, offset+old_size, handle->file_names.data.reserved - old_size);
 #endif
-                }
             }
         }
 
@@ -1440,7 +1429,9 @@ pgsd_initialize_file(MPI_File fh, const char* application, const char* schema, u
         {
         return PGSD_ERROR_IO;
         }
-    if( is_root() )
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    if (rank == 0)
     {
         // populate header fields
         struct pgsd_header header;
@@ -1490,12 +1481,13 @@ pgsd_initialize_file(MPI_File fh, const char* application, const char* schema, u
     @pre handle->fd is an open file.
     @pre handle->open_flags is set.
 */
-inline static int 
+inline static int
 pgsd_initialize_handle(struct pgsd_handle* handle)
     {
+    MPI_Comm_rank(MPI_COMM_WORLD, &handle->rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &handle->nprocs);
+    const int rank = handle->rank;
 #if PGSD_ACTIVATE_LOGGER
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     printf("[INFO]: Rank: %i -> PGSD: pgsd_initialize_handle\n", rank);
 #endif
     // check if the file was created
@@ -1536,7 +1528,7 @@ pgsd_initialize_handle(struct pgsd_handle* handle)
         return PGSD_ERROR_FILE_CORRUPT;
         }
 
-    if ( is_root() )
+    if (rank == 0)
         {
         // allocate the hash map
         retval = pgsd_name_id_map_allocate(&handle->name_map, PGSD_NAME_MAP_SIZE);
@@ -1621,7 +1613,7 @@ pgsd_initialize_handle(struct pgsd_handle* handle)
 
     MPI_Barrier(MPI_COMM_WORLD);
     // read in the file index
-    if ( is_root() )
+    if (rank == 0)
         {
         retval = pgsd_index_buffer_map(&handle->file_index, handle);
         if (retval != PGSD_SUCCESS)
@@ -1648,7 +1640,7 @@ pgsd_initialize_handle(struct pgsd_handle* handle)
 
     // if this is a write mode, allocate the initial frame index and the name buffer
     // allocate frame index, buffer index on root
-    if ( is_root() )
+    if (rank == 0)
         {
         if (handle->open_flags != PGSD_OPEN_READONLY)
             {
@@ -1686,9 +1678,9 @@ pgsd_initialize_handle(struct pgsd_handle* handle)
             return retval;
             }
         handle->frame_names.n_names = 0;
-    
-        if ( is_root() )
-            {  
+
+        if (rank == 0)
+            {
             retval = pgsd_byte_buffer_allocate(&handle->frame_names.data, PGSD_NAME_SIZE);
             if (retval != PGSD_SUCCESS)
                 {
@@ -1821,15 +1813,15 @@ int pgsd_open(struct pgsd_handle* handle, const char* fname, const enum pgsd_ope
 
 int pgsd_close(struct pgsd_handle* handle)
     {
-#if PGSD_ACTIVATE_LOGGER
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    printf("[INFO]: Rank: %i -> PGSD: pgsd_close\n", rank);
-#endif
     if (handle == NULL)
         {
         return PGSD_ERROR_INVALID_ARGUMENT;
         }
+
+    const int rank = handle->rank;
+#if PGSD_ACTIVATE_LOGGER
+    printf("[INFO]: Rank: %i -> PGSD: pgsd_close\n", rank);
+#endif
 
     int retval = 0;
 
@@ -1844,14 +1836,14 @@ int pgsd_close(struct pgsd_handle* handle)
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    if ( is_root() )
+    if (rank == 0)
         {
         retval = pgsd_index_buffer_free(&handle->file_index);
         if (retval != PGSD_SUCCESS)
             {
             return retval;
             }
-        
+
         if (handle->frame_index.reserved > 0)
             {
             retval = pgsd_index_buffer_free(&handle->frame_index);
@@ -1880,7 +1872,7 @@ int pgsd_close(struct pgsd_handle* handle)
             }
         }
 
-    if ( is_root() )
+    if (rank == 0)
         {
         retval = pgsd_name_id_map_free(&handle->name_map);
         if (retval != PGSD_SUCCESS)
@@ -1962,11 +1954,6 @@ int pgsd_end_frame(struct pgsd_handle* handle)
 
 int pgsd_flush(struct pgsd_handle* handle)
     {
-#if PGSD_ACTIVATE_LOGGER
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    printf("[INFO]: Rank: %i -> PGSD: pgsd_flush\n", rank);
-#endif
     MPI_Barrier(MPI_COMM_WORLD);
 
     if (handle == NULL)
@@ -1978,9 +1965,13 @@ int pgsd_flush(struct pgsd_handle* handle)
         return PGSD_ERROR_FILE_MUST_BE_WRITABLE;
         }
 
+    const int rank = handle->rank;
+#if PGSD_ACTIVATE_LOGGER
+    printf("[INFO]: Rank: %i -> PGSD: pgsd_flush\n", rank);
+#endif
 
     // flush the namelist buffer
-    // actual flushing is only done on root, but communication makes is necessary 
+    // actual flushing is only done on root, but communication makes is necessary
     // that all ranks enter the function
     int retval = 0;
     retval = pgsd_flush_name_buffer(handle);
@@ -2005,7 +1996,7 @@ int pgsd_flush(struct pgsd_handle* handle)
 
     // Write the frame index to the file, excluding the index entries that are part of the current
     // frame.
-    if ( is_root() )
+    if (rank == 0)
         {
         if (handle->pending_index_entries > handle->frame_index.size)
             {
@@ -2038,12 +2029,10 @@ int pgsd_flush(struct pgsd_handle* handle)
             long long unsigned int write_pos = handle->header.index_location
                                 + sizeof(struct pgsd_index_entry) * handle->file_index.size;
 
-            if ( is_root() ){
-                MPI_File_write_at(handle->fh, write_pos, handle->frame_index.data, sizeof(struct pgsd_index_entry) * handle->frame_index.size, MPI_BYTE, MPI_STATUS_IGNORE);
+            MPI_File_write_at(handle->fh, write_pos, handle->frame_index.data, sizeof(struct pgsd_index_entry) * handle->frame_index.size, MPI_BYTE, MPI_STATUS_IGNORE);
 #if PGSD_ACTIVATE_LOGGER
-                printf("[INFO]: Rank: %i -> PGSD: write at 7: loc %lli, size %li\n", rank, write_pos, sizeof(struct pgsd_index_entry) * handle->frame_index.size);
+            printf("[INFO]: Rank: %i -> PGSD: write at 7: loc %lli, size %li\n", rank, write_pos, sizeof(struct pgsd_index_entry) * handle->frame_index.size);
 #endif
-            }
 
 #if !PGSD_USE_MMAP
             // add the entries to the file index
@@ -2093,9 +2082,8 @@ int pgsd_write_chunk(struct pgsd_handle* handle,
                     uint8_t flags,
                     const void* data)
     {
+    const int rank = handle->rank;
 #if PGSD_ACTIVATE_LOGGER
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     printf("[INFO]: Rank: %i -> PGSD: pgsd_write_chunk\n", rank);
 #endif
     // validate input
@@ -2115,12 +2103,12 @@ int pgsd_write_chunk(struct pgsd_handle* handle,
         {
         return PGSD_ERROR_INVALID_ARGUMENT;
         }
-    
+
     uint16_t id;
     struct pgsd_index_entry entry;
     pgsd_util_zero_memory(&entry, sizeof(struct pgsd_index_entry));
-    
-    if ( is_root() )
+
+    if (rank == 0)
         {
         id = pgsd_name_id_map_find(&handle->name_map, name);
         if (id == UINT16_MAX)
@@ -2180,7 +2168,7 @@ int pgsd_write_chunk(struct pgsd_handle* handle,
             }
         int retval = 0;
         // the location of write buffer of rank 0
-        if ( is_root() )
+        if (rank == 0)
             {
             entry.location = handle->write_buffer.size;
 
@@ -2214,7 +2202,7 @@ int pgsd_write_chunk(struct pgsd_handle* handle,
         }
     else
         {
-        if ( is_root() )
+        if (rank == 0)
             {
             // add an entry to the frame index
             struct pgsd_index_entry* index_entry;
@@ -2227,7 +2215,7 @@ int pgsd_write_chunk(struct pgsd_handle* handle,
             *index_entry = entry;
             index_entry->location = handle->file_size;
             }
-        
+
         if ( !file_size_is_same(handle->file_size))
             {
             bcast_file_size(handle);
@@ -2237,24 +2225,23 @@ int pgsd_write_chunk(struct pgsd_handle* handle,
         long long int location_to_write = handle->file_size + offset;
 
         // write the data
-        size_t bytes_written = size;
-        if( all == true || is_root() ){
-            MPI_File_write_at(handle->fh, location_to_write, data, size, MPI_BYTE, MPI_STATUS_IGNORE);
+        if( all == true || (rank == 0) ){
+            int mpi_err = MPI_File_write_at(handle->fh, location_to_write, data, size, MPI_BYTE, MPI_STATUS_IGNORE);
 #if PGSD_ACTIVATE_LOGGER
             printf("[INFO]: Rank: %i -> PGSD: write at sim data: loc %lli, size %li\n", rank, location_to_write, size);
 #endif
+            if (mpi_err != MPI_SUCCESS)
+                {
+                return PGSD_ERROR_IO;
+                }
         }
-        if (bytes_written == -1 || bytes_written != size)
-            {
-            return PGSD_ERROR_IO;
-            }
 
         // update the file_size in the handle
         size_t global_bytes_written;
         MPI_Barrier(MPI_COMM_WORLD);
-        MPI_Allreduce(&bytes_written, &global_bytes_written, 1, my_MPI_SIZE_T, MPI_SUM, MPI_COMM_WORLD);
+        MPI_Allreduce(&size, &global_bytes_written, 1, my_MPI_SIZE_T, MPI_SUM, MPI_COMM_WORLD);
         
-        if ( is_root() )
+        if (rank == 0)
             {
             handle->file_size += global_bytes_written;
             }
@@ -2263,7 +2250,7 @@ int pgsd_write_chunk(struct pgsd_handle* handle,
         }
 
 
-    if ( is_root() )
+    if (rank == 0)
         {
         handle->pending_index_entries++;
         }
@@ -2308,15 +2295,15 @@ uint64_t pgsd_get_nnames(struct pgsd_handle* handle)
 const struct pgsd_index_entry*
 pgsd_find_chunk(struct pgsd_handle* handle, uint64_t frame, const char* name)
     {
-#if PGSD_ACTIVATE_LOGGER
-    int rank;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    printf("[INFO]: Rank: %i -> PGSD: pgsd_find_chunk\n", rank);
-#endif
     if (handle == NULL)
         {
         return NULL;
         }
+
+    const int rank = handle->rank;
+#if PGSD_ACTIVATE_LOGGER
+    printf("[INFO]: Rank: %i -> PGSD: pgsd_find_chunk\n", rank);
+#endif
     if (name == NULL)
         {
         return NULL;
@@ -2335,7 +2322,7 @@ pgsd_find_chunk(struct pgsd_handle* handle, uint64_t frame, const char* name)
         }
 
     uint16_t match_id = 0;
-    if ( is_root() )
+    if (rank == 0)
         {
         // find the id for the given name
         match_id = pgsd_name_id_map_find(&handle->name_map, name);
@@ -2360,7 +2347,7 @@ pgsd_find_chunk(struct pgsd_handle* handle, uint64_t frame, const char* name)
         size_t m = 0;
         int found = 0;
 
-        if ( is_root() )
+        if (rank == 0)
             {
             while (L <= R)
                 {
@@ -2397,7 +2384,7 @@ pgsd_find_chunk(struct pgsd_handle* handle, uint64_t frame, const char* name)
         size_t R = handle->file_index.size;
 
         int64_t cur_index = 0;
-        if ( is_root() )
+        if (rank == 0)
             {
             // progressively narrow the search window by halves
             do
@@ -2454,20 +2441,15 @@ int pgsd_read_chunk(struct pgsd_handle* handle,
                     uint32_t offset, 
                     bool all)
     {
-    int rank, nprocs;
-    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-    MPI_Comm_size(MPI_COMM_WORLD,&nprocs);
+    if (handle == NULL)
+        {
+        return PGSD_ERROR_INVALID_ARGUMENT;
+        }
 
+    const int rank = handle->rank;
 #if PGSD_ACTIVATE_LOGGER
     printf("[INFO]: Rank: %i -> PGSD: pgsd_read_chunk\n", rank);
 #endif
-    if (handle == NULL)
-        {
-#if PGSD_ACTIVATE_LOGGER
-        printf("[INFO]: Rank: %i -> PGSD: pgsd_read_chunk ERRORHANDLER invalid argument handle.\n", rank);
-#endif
-        return PGSD_ERROR_INVALID_ARGUMENT;
-        }
     if (data == NULL)
         {
 #if PGSD_ACTIVATE_LOGGER
@@ -2475,10 +2457,10 @@ int pgsd_read_chunk(struct pgsd_handle* handle,
 #endif
         return PGSD_ERROR_INVALID_ARGUMENT;
         }
-    if ( is_root() && chunk == NULL)
+    if ((rank == 0) && chunk == NULL)
         {
 #if PGSD_ACTIVATE_LOGGER
-        printf("[INFO]: Rank: %i -> PGSD: pgsd_read_chunk ERRORHANDLER invalid argument chunck.\n", rank);
+        printf("[INFO]: Rank: %i -> PGSD: pgsd_read_chunk ERRORHANDLER invalid argument chunk.\n", rank);
 #endif
         return PGSD_ERROR_INVALID_ARGUMENT;
         }
@@ -2499,7 +2481,7 @@ int pgsd_read_chunk(struct pgsd_handle* handle,
     uint64_t stride = 0;
     int64_t m_location;
 
-    if ( is_root() ){
+    if (rank == 0) {
         N_global = chunk->N;
         M_global = chunk->M;
         m_type = chunk->type;
@@ -2556,52 +2538,20 @@ int pgsd_read_chunk(struct pgsd_handle* handle,
 
 size_t pgsd_sizeof_type(enum pgsd_type type)
     {
-    size_t val = 0;
-    if (type == PGSD_TYPE_UINT8)
+    switch (type)
         {
-        val = sizeof(uint8_t);
+        case PGSD_TYPE_UINT8:   return sizeof(uint8_t);
+        case PGSD_TYPE_UINT16:  return sizeof(uint16_t);
+        case PGSD_TYPE_UINT32:  return sizeof(uint32_t);
+        case PGSD_TYPE_UINT64:  return sizeof(uint64_t);
+        case PGSD_TYPE_INT8:    return sizeof(int8_t);
+        case PGSD_TYPE_INT16:   return sizeof(int16_t);
+        case PGSD_TYPE_INT32:   return sizeof(int32_t);
+        case PGSD_TYPE_INT64:   return sizeof(int64_t);
+        case PGSD_TYPE_FLOAT:   return sizeof(float);
+        case PGSD_TYPE_DOUBLE:  return sizeof(double);
+        default:                return 0;
         }
-    else if (type == PGSD_TYPE_UINT16)
-        {
-        val = sizeof(uint16_t);
-        }
-    else if (type == PGSD_TYPE_UINT32)
-        {
-        val = sizeof(uint32_t);
-        }
-    else if (type == PGSD_TYPE_UINT64)
-        {
-        val = sizeof(uint64_t);
-        }
-    else if (type == PGSD_TYPE_INT8)
-        {
-        val = sizeof(int8_t);
-        }
-    else if (type == PGSD_TYPE_INT16)
-        {
-        val = sizeof(int16_t);
-        }
-    else if (type == PGSD_TYPE_INT32)
-        {
-        val = sizeof(int32_t);
-        }
-    else if (type == PGSD_TYPE_INT64)
-        {
-        val = sizeof(int64_t);
-        }
-    else if (type == PGSD_TYPE_FLOAT)
-        {
-        val = sizeof(float);
-        }
-    else if (type == PGSD_TYPE_DOUBLE)
-        {
-        val = sizeof(double);
-        }
-    else
-        {
-        return 0;
-        }
-    return val;
     }
 
 const char*
