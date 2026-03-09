@@ -38,7 +38,8 @@ jobs:
           cmake -S pgsd -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_C_COMPILER=mpicc \
-            -DCMAKE_CXX_COMPILER=mpicxx
+            -DCMAKE_CXX_COMPILER=mpicxx \
+            -DCLANG_TIDY_EXE=""
 
       - name: Build
         run: |
