@@ -8,7 +8,7 @@ simulation output. It is a fork of the
 [GSD library](https://github.com/glotzerlab/gsd) from the Glotzer Group, adapted to
 eliminate the serial bottleneck of collecting all particle data on rank 0 before writing.
 
-Current version: **3.2.0**
+Current GSD version used: **3.2.0**
 
 ---
 
