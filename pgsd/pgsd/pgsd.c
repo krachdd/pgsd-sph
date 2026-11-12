@@ -38,6 +38,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
@@ -95,10 +96,15 @@ enum
     PGSD_NAME_MAP_SIZE = 57557
     };
 
-/// Current PGSD file specification
+/// Current PGSD file specification (matches the GSD 5.x file layer: version 2.1)
 enum
     {
-    PGSD_CURRENT_FILE_VERSION = 2
+    PGSD_CURRENT_FILE_VERSION_MAJOR = 2
+    };
+
+enum
+    {
+    PGSD_CURRENT_FILE_VERSION_MINOR = 1
     };
 
 // Helper functions to regarding the parallelization
@@ -1438,7 +1444,8 @@ pgsd_initialize_file(MPI_File fh, const char* application, const char* schema, u
         pgsd_util_zero_memory(&header, sizeof(header));
 
         header.magic = PGSD_MAGIC_ID;
-        header.pgsd_version = pgsd_make_version(PGSD_CURRENT_FILE_VERSION, 0);
+        header.pgsd_version
+            = pgsd_make_version(PGSD_CURRENT_FILE_VERSION_MAJOR, PGSD_CURRENT_FILE_VERSION_MINOR);
         strncpy(header.application, application, sizeof(header.application) - 1);
         header.application[sizeof(header.application) - 1] = 0;
         strncpy(header.schema, schema, sizeof(header.schema) - 1);
@@ -1698,6 +1705,34 @@ pgsd_initialize_handle(struct pgsd_handle* handle)
     handle->maximum_write_buffer_size = PGSD_DEFAULT_MAXIMUM_WRITE_BUFFER_SIZE;
     handle->index_entries_to_buffer = PGSD_DEFAULT_INDEX_ENTRIES_TO_BUFFER;
     bcast_number_of_names_file(handle);
+
+    // Silently upgrade writable files from a previous matching major version to the latest
+    // minor version (same behavior as GSD 5.x). Files with a newer minor version are left
+    // untouched, so opening never downgrades the file version.
+    if ((handle->open_flags == PGSD_OPEN_READWRITE || handle->open_flags == PGSD_OPEN_APPEND)
+        && (handle->header.pgsd_version
+            < pgsd_make_version(PGSD_CURRENT_FILE_VERSION_MAJOR, PGSD_CURRENT_FILE_VERSION_MINOR))
+        && (handle->header.pgsd_version >> (sizeof(uint32_t) * 4)
+            == PGSD_CURRENT_FILE_VERSION_MAJOR))
+        {
+        handle->header.pgsd_version
+            = pgsd_make_version(PGSD_CURRENT_FILE_VERSION_MAJOR, PGSD_CURRENT_FILE_VERSION_MINOR);
+        int upgrade_err = MPI_SUCCESS;
+        if (rank == 0)
+            {
+            upgrade_err = MPI_File_write_at(handle->fh,
+                                            0,
+                                            &(handle->header),
+                                            sizeof(struct pgsd_header),
+                                            MPI_BYTE,
+                                            MPI_STATUS_IGNORE);
+            }
+        MPI_Bcast(&upgrade_err, 1, MPI_INT, 0, MPI_COMM_WORLD);
+        if (upgrade_err != MPI_SUCCESS)
+            {
+            return PGSD_ERROR_IO;
+            }
+        }
 
     return PGSD_SUCCESS;
     }
@@ -2550,6 +2585,7 @@ size_t pgsd_sizeof_type(enum pgsd_type type)
         case PGSD_TYPE_INT64:   return sizeof(int64_t);
         case PGSD_TYPE_FLOAT:   return sizeof(float);
         case PGSD_TYPE_DOUBLE:  return sizeof(double);
+        case PGSD_TYPE_CHARACTER: return sizeof(char);
         default:                return 0;
         }
     }

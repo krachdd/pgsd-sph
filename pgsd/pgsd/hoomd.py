@@ -535,7 +535,8 @@ class HOOMDTrajectory(object):
                                + str(self.file))
         valid = False
         version = self.file.schema_version
-        if (version < (2, 0) and version >= (1, 0)):
+        # accept hoomd schema 1.x and 2.x (GSD 5.x / HOOMD-blue 7.x)
+        if (version < (3, 0) and version >= (1, 0)):
             valid = True
         if not valid:
             raise RuntimeError('Incompatible hoomd schema version '
@@ -982,7 +983,7 @@ def open(name, mode='r'):
 
     pgsdfileobj = fl.open(name=str(name),
                          mode=mode,
-                         application='pgsd.hoomd ' + pgsd.version,
+                         application='pgsd.hoomd ' + pgsd.version.version,
                          schema='hoomd',
                          schema_version=[1, 4])
 
@@ -1029,7 +1030,7 @@ def read_log(name, scalar_only=False):
 
     with fl.open(name=str(name),
                  mode='r',
-                 application='pgsd.hoomd ' + pgsd.version,
+                 application='pgsd.hoomd ' + pgsd.version.version,
                  schema='hoomd',
                  schema_version=[1, 4]) as pgsdfileobj:
 

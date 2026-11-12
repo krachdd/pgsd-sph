@@ -826,6 +826,10 @@ cdef class PGSDFile:
         elif pgsd_type == libpgsd.PGSD_TYPE_DOUBLE:
             data_array = numpy.empty(dtype=numpy.float64,
                                      shape=[index_entry.N, index_entry.M])
+        elif pgsd_type == libpgsd.PGSD_TYPE_CHARACTER:
+            # strings (file format 2.1 / GSD 5.x)
+            data_array = numpy.empty(dtype=numpy.int8,
+                                     shape=[index_entry.M, index_entry.N])
         else:
             raise ValueError("invalid type for chunk: " + name)
 
@@ -854,6 +858,8 @@ cdef class PGSDFile:
                 data_ptr = __get_ptr_float32(data_array)
             elif pgsd_type == libpgsd.PGSD_TYPE_DOUBLE:
                 data_ptr = __get_ptr_float64(data_array)
+            elif pgsd_type == libpgsd.PGSD_TYPE_CHARACTER:
+                data_ptr = __get_ptr_int8(data_array)
             else:
                 raise ValueError("invalid type for chunk: " + name)
 
@@ -869,6 +875,11 @@ cdef class PGSDFile:
             __raise_on_error(retval, self.name)
 
         if index_entry.M == 1:
+            if pgsd_type == libpgsd.PGSD_TYPE_CHARACTER:
+                data_array = data_array.flatten()
+                bytes_array = data_array.view(
+                    dtype=numpy.dtype((bytes, data_array.shape[0])))
+                return bytes_array[0].decode("UTF-8")
             return data_array.reshape([index_entry.N])
         else:
             return data_array

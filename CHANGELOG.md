@@ -1,5 +1,38 @@
 # PGSD Changelog
 
+## [Unreleased] — include_hoomd722 (GSD 5.0.1 / HOOMD-blue 7.2.2)
+
+### File layer (`pgsd/pgsd/pgsd.c`, `pgsd/pgsd/pgsd.h`, `pgsd/pgsd/libpgsd.pxd`)
+
+* New files are written with file format version **2.1** (same as GSD 5.x).
+* Added `PGSD_TYPE_CHARACTER` (string chunks, file format 2.1).
+* Opening a 2.x file with mode `'r+'`/`'a'` silently upgrades it to the latest minor
+  version (2.1); read-only opens never modify the file and versions are never downgraded.
+* Not ported: the GSD 4.0 buffering refactor (no implicit flush in `end_frame`/`find_chunk`/
+  `read_chunk`, merged frame/buffer index, removal of `index_entries_to_buffer`) and the
+  `fsync` calls. PGSD keeps its MPI-IO buffering/flush semantics, which HOOMD-blue's
+  `GSDDumpWriterMPI`/`GSDReaderMPI` rely on.
+
+### Python (`pgsd/pgsd/fl.pyx`, `pgsd/pgsd/hoomd.py`, `pgsd/pgsd/__init__.py`)
+
+* `fl.PGSDFile.read_chunk` reads `CHARACTER` chunks and returns them as `str`.
+* `pgsd.hoomd` accepts hoomd schema versions 1.x and 2.x (files written by gsd 5.x,
+  including `precision='double'`).
+* Fixed `pgsd.hoomd.open` and `pgsd.hoomd.read_log`: they raised `TypeError` because the
+  application string used the `pgsd.version` module instead of `pgsd.version.version`.
+* Removed the `SIGTERM` handler (as in GSD 5.0 and HOOMD-blue 6.1).
+
+### Tests (`pgsd/pgsd/test/`)
+
+* New MPI test suite `test_pgsd.py` (with `pgsd_mpi_writer.py`, `pgsd_testdata.py`),
+  enabled in CMake. It writes files with `mpirun` on 1, 2 and 4 ranks (uneven partitions,
+  an empty rank, 150 frames to grow the index, a tiny write buffer, append mode) and
+  checks them serially with `pgsd.fl`, `pgsd.hoomd` and gsd 5.x (`gsd-sph`). It also
+  covers version upgrade/rejection, CHARACTER chunks and reading gsd 5.x SPH files in
+  single and double precision.
+* `test_fl.py`, `test_hoomd.py` and `test_largefile.py` are unmodified GSD 3.2 tests that
+  import `gsd`, not `pgsd`; they are no longer copied to the build directory.
+
 ## [Release 1.0] — 2026-03-09
 
 ### Code improvements (`pgsd/pgsd/pgsd.c`, `pgsd/pgsd/pgsd.h`)

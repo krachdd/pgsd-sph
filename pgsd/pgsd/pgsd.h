@@ -65,7 +65,10 @@ extern "C"
         PGSD_TYPE_FLOAT,
 
         /// 64-bit floating point number.
-        PGSD_TYPE_DOUBLE
+        PGSD_TYPE_DOUBLE,
+
+        /// 8-bit character (added in file format version 2.1, matching GSD 5.x).
+        PGSD_TYPE_CHARACTER
         };
 
     /// Flag for PGSD file open options
