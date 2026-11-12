@@ -59,4 +59,4 @@ endforeach()
 
 add_custom_target(copy_pgsd ALL DEPENDS ${files})
 
-# add_subdirectory(test)
+add_subdirectory(test)

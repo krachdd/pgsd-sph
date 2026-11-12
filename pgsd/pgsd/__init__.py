@@ -12,15 +12,8 @@ You must explicitly import these modules before use::
     import pgsd.hoomd
 """
 
-import signal
-import sys
 from . import version  # noqa: F401
 
-# Install a SIGTERM handler that gracefully exits, allowing open files to flush
-# buffered writes and close. Catch ValueError and pass as there is no way to
-# determine if this is the main interpreter running the main thread prior to
-# the call.
-try:
-    signal.signal(signal.SIGTERM, lambda n, f: sys.exit(1))
-except ValueError:
-    pass
+# The SIGTERM handler was removed, matching GSD 5.0 (glotzerlab/gsd#501) and
+# HOOMD-blue 6.1. Applications that need graceful shutdown on SIGTERM must
+# install their own handler.

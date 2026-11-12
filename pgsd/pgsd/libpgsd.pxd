@@ -18,6 +18,7 @@ cdef extern from "pgsd.h" nogil:
         PGSD_TYPE_INT64
         PGSD_TYPE_FLOAT
         PGSD_TYPE_DOUBLE
+        PGSD_TYPE_CHARACTER
 
     cdef enum pgsd_open_flag:
         PGSD_OPEN_READWRITE=1
